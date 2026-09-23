@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js 学习 - 水电站场景</title>
+  <style>
+    /* 让画布铺满整个屏幕,去掉浏览器默认边距 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #1a1f26;
+      font-family: "Microsoft YaHei", sans-serif;
+    }
+    /* 加载进度提示,居中显示 */
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #cfd8e3;
+      background: #1a1f26;
+      z-index: 10;
+      gap: 12px;
+    }
+    #bar {
+      width: 320px;
+      height: 8px;
+      background: #333c48;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    #barFill {
+      width: 0%;
+      height: 100%;
+      background: #4f9e6f;
+      transition: width 0.2s;
+    }
+    /* 左下角操作提示 */
+    #tips {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: #8b98a8;
+      font-size: 12px;
+      line-height: 1.8;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 8px 12px;
+      border-radius: 6px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- 加载界面:fbx 文件很大(135MB),需要显示进度 -->
+  <div id="loading">
+    <div id="loadingText">正在加载场景...</div>
+    <div id="bar"><div id="barFill"></div></div>
+    <div id="loadingPercent">0%</div>
+  </div>
+
+  <div id="tips">
+    鼠标左键拖动:旋转视角 | 滚轮:缩放 | 鼠标右键拖动:平移<br />
+    (这是 OrbitControls 轨道控制器提供的交互,见 main.js 中的讲解)
+  </div>
+
+  <!--
+    【importmap 导入映射表】
+    这是"不用打包工具"也能写现代 Three.js 的关键。
+    它告诉浏览器:代码里写 'three' 时,实际去哪个网址下载。
+    Three.js 官方 addons(如 FBXLoader、OrbitControls)都放在 three/addons/ 下。
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <!-- 真正的场景代码在 main.js 里(type=module 表示它是 ES 模块,可以用 import) -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
