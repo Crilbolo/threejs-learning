@@ -16,6 +16,21 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+// ---------- 本课新增:后处理三件套 + 输出通道 ----------
+// EffectComposer:后处理"流水线管家",负责把画面依次通过各个通道
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+// RenderPass:流水线的第一站——把场景正常画出来(它也算一个"通道")
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+// OutlinePass:核心!给指定物体绘制轮廓描边的通道
+import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
+// OutputPass:最后一站,把画面做色彩空间转换后输出。不加它整屏会发暗
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ---------- 鼠标悬停描边:射线检测 ----------
+// Raycaster:从鼠标位置向场景发射射线,检测碰到了哪些物体
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let loadedModel = null; // 加载完成后的 FBX 模型引用
 
 // ---------- 第 2 步:创建"三件套":场景、相机、渲染器 ----------
 
@@ -24,6 +39,16 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1f26); // 背景色(深灰蓝)
 // 雾:远处物体逐渐融入背景,增加空间感(可选,注释掉也没有问题)
 scene.fog = new THREE.Fog(0x1a1f26, 300, 3000);
+
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(100, 100, 100),
+  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+);
+cube.position.set(0, 50, 0);
+cube.castShadow = true;
+cube.receiveShadow = true;
+scene.add(cube);
+
 
 // 透视相机。参数含义和 UE 相机类似:
 //   75   = 视野角度 FOV(度)
@@ -126,6 +151,7 @@ loader.load(
     });
 
     scene.add(model);
+    loadedModel = model; // 保存模型引用,供鼠标悬停射线检测使用
 
     // 把相机对准模型(详见函数注释)
     fitCameraToModel(model);
@@ -195,7 +221,40 @@ function fitCameraToModel(model) {
   controls.update();
 }
 
-// ---------- 第 7 步:渲染循环 ----------
+// ---------- 第 7 步:后处理流水线(描边) ----------
+// EffectComposer 是后处理的"总指挥",所有画面都要经过它处理
+const composer = new EffectComposer(renderer);
+
+// RenderPass:第一站,把场景正常渲染出来
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+// OutlinePass:第二站,给选中的物体画描边
+const outlinePass = new OutlinePass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight), // 分辨率
+  scene,
+  camera
+);
+// 描边样式配置
+outlinePass.edgeStrength = 5.0;       // 描边强度(粗细),越大越粗
+outlinePass.edgeGlow = 0.5;           // 描边发光,0=不发光
+outlinePass.edgeThickness = 1.5;      // 描边厚度
+outlinePass.visibleEdgeColor.set(0x00ffff);   // 可见边缘颜色(青色)
+outlinePass.hiddenEdgeColor.set(0x00ffff);    // 被遮挡边缘颜色
+composer.addPass(outlinePass);
+
+// OutputPass:最后一站,色彩空间转换,不加画面会发暗
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
+
+// ---------- 第 8 步:鼠标移动事件(射线检测悬停物体) ----------
+window.addEventListener('mousemove', (event) => {
+  // 把鼠标坐标转换为 Three.js 的标准化设备坐标(-1 到 +1)
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+});
+
+// ---------- 第 9 步:渲染循环 ----------
 // 和 UE 的 Tick 一样:每一帧都执行一次 draw()
 const clock = new THREE.Clock(); // 计时器,用来算两帧之间的时间差
 
@@ -208,13 +267,36 @@ function draw() {
   axes.rotation.y += delta * 0.5;
 
   controls.update(); // 有阻尼时必须每帧更新控制器
-  renderer.render(scene, camera); // 核心一行:把场景从相机视角画出来
+
+  // 射线检测:从鼠标位置发射射线,检测碰到的物体
+  if (loadedModel) {
+    raycaster.setFromCamera(mouse, camera);
+    // 只检测模型里的网格(排除辅助工具、灯光等)
+    const intersects = raycaster.intersectObject(loadedModel, true);
+    if (intersects.length > 0) {
+      // 碰到了物体,把描边目标设为碰到的第一个网格
+      outlinePass.selectedObjects = [intersects[0].object];
+      document.body.style.cursor = 'pointer'; // 鼠标变成小手
+    } else {
+      // 没碰到任何东西,清空描边
+      outlinePass.selectedObjects = [];
+      document.body.style.cursor = 'default';
+    }
+  }
+
+  // 用 composer 替代 renderer.render,让画面经过后处理流水线
+  composer.render();
+
+  cube.rotation.x += delta * 0.5;
 }
 draw(); // 启动循环(模型没加载完也会先跑,你能先看到网格和坐标轴)
 
-// ---------- 第 8 步:处理浏览器窗口大小变化 ----------
+// ---------- 第 10 步:处理浏览器窗口大小变化 ----------
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight; // 新宽高比
   camera.updateProjectionMatrix();                        // 让改动生效
   renderer.setSize(window.innerWidth, window.innerHeight); // 画布跟随窗口
+  // 后处理也要同步更新分辨率
+  composer.setSize(window.innerWidth, window.innerHeight);
+  outlinePass.resolution.set(window.innerWidth, window.innerHeight);
 });
